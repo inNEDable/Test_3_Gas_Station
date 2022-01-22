@@ -11,6 +11,8 @@ public class GasStation {
     public static final int GAS_PUMPS = 5;
     public static final int CASH_REGISTERS = 2;
     public static final Object pumpKey = new Object();
+    public static final Object [] cashRegisterKeys = new Object[CASHIERS];
+
 
     ////////
     protected HashMap<Integer, BlockingQueue<Car>> gasPumps;
@@ -32,14 +34,34 @@ public class GasStation {
         
         this.cashRegisters = new HashMap<>();
         for (int i = 0; i < CASH_REGISTERS; i++) {
-            cashRegisters.put(i+1, new LinkedBlockingQueue<>());
-        }
-        this.cashiers = new ArrayList<>();
-        for (int i = 0; i < CASHIERS; i++) {
-            cashiers.add(new Cashier());
+            cashRegisters.put(i, new LinkedBlockingQueue<>());
         }
 
+        for (int i = 0; i < CASHIERS; i++) {
+            cashRegisterKeys[i] = new Object();
+        }
+
+        this.cashiers = new ArrayList<>();
+        for (int i = 0; i < CASHIERS; i++) {
+            cashiers.add(new Cashier(this, i));
+        }
+
+
         startAllWorkers();
+    }
+
+    public void enterInLineForCashRegister(Driver driver) {
+        int cashRegisterNumber = new Random().nextInt(CASH_REGISTERS);
+
+        try {
+            cashRegisters.get(cashRegisterNumber).put(driver);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        synchronized (GasStation.cashRegisterKeys[cashRegisterNumber]){
+            GasStation.cashRegisterKeys[cashRegisterNumber].notifyAll();
+        }
     }
 
     private void startAllWorkers() {
@@ -62,30 +84,28 @@ public class GasStation {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+            car.setGasPumpNumber(pumpNumber);
 
             pumpKey.notifyAll();
             car.getDriver().setGasStation(this);
         }
 
     }
-    
+
     protected Car getCarWaiting(){
 
-        for (Integer pump: gasPumps.keySet()){
-            if (!gasPumps.get(pump).isEmpty()) {
-                try {
-                    return gasPumps.get(pump).take();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+        for (Integer pumpNumber: gasPumps.keySet()){
+            if (!gasPumps.get(pumpNumber).isEmpty() && !gasPumps.get(pumpNumber).peek().isFull()) {
+                System.out.println("Car from pump NUMBER " + pumpNumber + " has been MARKED for filling");
+                return gasPumps.get(pumpNumber).peek();
             }
         }
         return null;
     }
 
-    public boolean hasCarsWaiting() {
-        for (Integer pumpNumber: gasPumps.keySet()){
-            if (gasPumps.get(pumpNumber).size() > 0){
+    public boolean hasCarWaitingForFilling() {
+        for (Integer pumpNumber : gasPumps.keySet()){
+            if (!gasPumps.get(pumpNumber).isEmpty() && !gasPumps.get(pumpNumber).peek().isFull()){
                 return true;
             }
         }
